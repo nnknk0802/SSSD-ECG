@@ -41,18 +41,54 @@ sssd_standalone/
 - NumPy
 - (Optional) CUDA for GPU acceleration
 
-Install dependencies:
+### Method 1: Install as Package (Recommended)
+
+Install in development mode (editable):
 
 ```bash
-pip install -r requirements.txt
+cd sssd_standalone
+pip install -e .
 ```
 
-### Quick Setup
+Or install normally:
+
+```bash
+cd sssd_standalone
+pip install .
+```
+
+After installation, you can import from anywhere:
+
+```python
+from sssd_standalone import SSSDECG, ECGDataset, create_dataloaders
+```
+
+### Method 2: Copy to Your Project
 
 Simply copy the `sssd_standalone` folder to your project:
 
 ```bash
 cp -r sssd_standalone /path/to/your/project/
+```
+
+Then add to Python path in your script:
+
+```python
+import sys
+from pathlib import Path
+
+# Add sssd_standalone parent directory to path
+sys.path.insert(0, str(Path(__file__).parent / "path/to/parent"))
+
+from sssd_standalone import SSSDECG, ECGDataset
+```
+
+### Method 3: Manual Dependencies
+
+If not installing as a package, install dependencies manually:
+
+```bash
+pip install -r sssd_standalone/requirements.txt
 ```
 
 ## Quick Start
