@@ -102,12 +102,15 @@ def prepare_ptbxl_data(
 
     # Reformat everything as memmap for efficiency
     if recreate_data:
-        reformat_as_memmap(
+        df_mapped = reformat_as_memmap(
             df_ptb_xl,
             target_folder_ptb_xl / "memmap.npy",
             data_folder=target_folder_ptb_xl,
             delete_npys=delete_npys
         )
+    else:
+        # Load already prepared data
+        df_mapped, _, _, _ = load_dataset(target_folder_ptb_xl)
 
     return df_ptb_xl, lbl_itos_ptb_xl, mean_ptb_xl, std_ptb_xl
 
