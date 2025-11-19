@@ -32,9 +32,11 @@ class SSSDECG(nn.Module):
     Args:
         config_path (str): Path to configuration JSON file. Default: "config/config_SSSD_ECG.json"
         device (str): Device to run the model on. Default: "cuda" if available, else "cpu"
+        num_classes (int, optional): Number of label classes. If provided, overrides the config value.
+                                     Use this when your data has a different number of classes than the config.
     """
 
-    def __init__(self, config_path=None, device=None):
+    def __init__(self, config_path=None, device=None, num_classes=None):
         super(SSSDECG, self).__init__()
 
         # Set device
@@ -58,6 +60,11 @@ class SSSDECG(nn.Module):
         # Extract configs
         self.diffusion_config = self.config["diffusion_config"]
         self.model_config = self.config["wavenet_config"]
+
+        # Override number of classes if provided
+        if num_classes is not None:
+            self.model_config["label_embed_classes"] = num_classes
+            print(f"Using {num_classes} classes (overriding config value of {self.config['wavenet_config'].get('label_embed_classes', 'N/A')})")
 
         # Calculate diffusion hyperparameters
         self.diffusion_hyperparams = calc_diffusion_hyperparams(
