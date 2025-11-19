@@ -80,12 +80,16 @@ def get_ptbxl_dataloaders_v2(
     print(f"  Columns: {len(df_ptb_xl.columns)}")
 
     # Check if label columns exist
+    # If min_cnt=0, filtered columns don't exist, so use unfiltered ones
     label_col_key = ptb_xl_label + "_filtered_numeric"
     if label_col_key not in df_ptb_xl.columns:
-        raise ValueError(
-            f"Column '{label_col_key}' not found in DataFrame. "
-            f"Available columns: {list(df_ptb_xl.columns)}"
-        )
+        label_col_key = ptb_xl_label + "_numeric"
+        print(f"  Note: Using unfiltered labels ('{label_col_key}') because min_cnt=0")
+        if label_col_key not in df_ptb_xl.columns:
+            raise ValueError(
+                f"Neither '{ptb_xl_label}_filtered_numeric' nor '{ptb_xl_label}_numeric' found in DataFrame. "
+                f"Available columns: {list(df_ptb_xl.columns)}"
+            )
 
     # Step 2: Reformat as memmap
     if recreate_data:
@@ -108,6 +112,21 @@ def get_ptbxl_dataloaders_v2(
     else:
         print("\nStep 2: Loading existing memmap data...")
         df_mapped, _, _, _ = load_dataset(target_folder_ptb_xl)
+
+        # Re-check which label column to use after loading
+        label_col_key_filtered = ptb_xl_label + "_filtered_numeric"
+        label_col_key_unfiltered = ptb_xl_label + "_numeric"
+
+        if label_col_key_filtered in df_mapped.columns:
+            label_col_key = label_col_key_filtered
+        elif label_col_key_unfiltered in df_mapped.columns:
+            label_col_key = label_col_key_unfiltered
+            print(f"  Note: Using unfiltered labels ('{label_col_key}')")
+        else:
+            raise ValueError(
+                f"Neither '{label_col_key_filtered}' nor '{label_col_key_unfiltered}' found in loaded DataFrame. "
+                f"Available columns: {list(df_mapped.columns)}"
+            )
 
     # Step 3: Create multi-hot encoded labels directly from df_mapped
     print("\nStep 3: Creating multi-hot encoded labels...")

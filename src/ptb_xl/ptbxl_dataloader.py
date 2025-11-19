@@ -171,7 +171,17 @@ def create_ptbxl_dataloaders(
     lbl_itos_label = np.array(lbl_itos[ptb_xl_label])
 
     # Create multi-hot encoded labels
-    df_mapped["label"] = df_mapped[ptb_xl_label + "_filtered_numeric"].apply(
+    # Check if filtered labels exist (min_cnt > 0) or use unfiltered (min_cnt = 0)
+    label_col_key = ptb_xl_label + "_filtered_numeric"
+    if label_col_key not in df_mapped.columns:
+        label_col_key = ptb_xl_label + "_numeric"
+        if label_col_key not in df_mapped.columns:
+            raise ValueError(
+                f"Neither '{ptb_xl_label}_filtered_numeric' nor '{ptb_xl_label}_numeric' found in DataFrame. "
+                f"Available label columns: {[col for col in df_mapped.columns if 'label' in col]}"
+            )
+
+    df_mapped["label"] = df_mapped[label_col_key].apply(
         lambda x: multihot_encode(x, len(lbl_itos_label))
     )
 
