@@ -16,7 +16,6 @@ from torch.utils.data import DataLoader, Dataset
 import logging
 from functools import partial
 from scipy import special as ss
-from pytorch_lightning.utilities import rank_zero_only
 from einops import rearrange, repeat
 import opt_einsum as oe
 
@@ -24,10 +23,15 @@ contract = oe.contract
 contract_expression = oe.contract_expression
 
 
+# Simple rank_zero_only decorator replacement (for non-distributed training)
+def rank_zero_only(fn):
+    """Decorator that returns the function as-is for standalone usage."""
+    return fn
+
 
 ''' Standalone CSDI + S4 imputer for random missing, non-random missing and black-out missing.
 The notebook contains CSDI and S4 functions and utilities. However the imputer is located in the last Class of
-the notebook, please see more documentation of use there. Additional at this file can be added for CUDA multiplication 
+the notebook, please see more documentation of use there. Additional at this file can be added for CUDA multiplication
 the cauchy kernel.'''
 
 
