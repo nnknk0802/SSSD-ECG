@@ -5,8 +5,8 @@
         "beta_T": 0.02
     },
     "wavenet_config": {
-        "in_channels": 8,
-        "out_channels":8,
+        "in_channels": 12,
+        "out_channels":12,
         "num_res_layers": 36,
         "res_channels": 256,
         "skip_channels": 256,
@@ -19,7 +19,7 @@
         "s4_bidirectional":1,
         "s4_layernorm":1,
         "label_embed_dim":128,
-        "label_embed_classes":71
+        "label_embed_classes":44
     },
     "train_config": {
         "output_directory": "sssd_label_cond",
