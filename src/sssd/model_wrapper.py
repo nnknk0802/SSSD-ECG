@@ -326,15 +326,30 @@ class SSSDECG(nn.Module):
             print(f"Compiling model with {self._jit_available}...")
             try:
                 if self._jit_available == 'compile':
-                    # Use torch.compile (PyTorch 2.0+)
-                    self._jit_model = torch.compile(self.model, mode='reduce-overhead')
+                    # Use torch.compile (PyTorch 2.0+) with default mode for better compatibility
+                    # Configure dynamo to suppress errors and fall back to eager mode for unsupported ops
+                    import torch._dynamo
+                    torch._dynamo.config.suppress_errors = True
+                    self._jit_model = torch.compile(self.model, mode='default')
                 elif self._jit_available == 'jit':
                     # Use torch.jit.script as fallback
                     # Note: torch.jit.script may not work with all models
                     self._jit_model = self.model  # Keep original model
                 print("Model compilation completed.")
+
+                # Test the compiled model with a small batch
+                print("Testing compiled model...")
+                test_size = (1, self.model_config["out_channels"],
+                           self.config.get("trainset_config", {}).get("segment_length", 1000))
+                test_cond = torch.zeros(1, self.model_config.get("label_embed_classes", 71),
+                                       device=self.device, dtype=torch.float32)
+                test_diffusion_steps = torch.zeros((1, 1), device=self.device, dtype=torch.float32)
+                test_x = torch.randn(test_size, device=self.device)
+                _ = self._jit_model((test_x, test_cond, test_diffusion_steps))
+                print("Compiled model test passed.")
+
             except Exception as e:
-                print(f"Warning: Model compilation failed: {e}")
+                print(f"Warning: Model compilation or test failed: {e}")
                 print("Falling back to regular generate().")
                 self._jit_available = None
                 return self.generate(labels=labels, num_samples=num_samples, return_numpy=return_numpy)
