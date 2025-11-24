@@ -270,7 +270,8 @@ class SSSDECG(nn.Module):
 
         # Reverse diffusion process
         for t in range(T-1, -1, -1):
-            diffusion_steps = (t * torch.ones((size[0], 1), dtype=torch.float32, device=self.device))
+            # Create diffusion_steps with explicit float32 type
+            diffusion_steps = torch.full((size[0], 1), float(t), dtype=torch.float32, device=self.device)
 
             # Predict epsilon
             epsilon_theta = net((x, cond, diffusion_steps))
