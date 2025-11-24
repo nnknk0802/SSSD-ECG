@@ -157,6 +157,76 @@ def sampling_label(net, size, diffusion_hyperparams, cond=None):
     return x
 
 
+def sampling_label_ddim(net, size, diffusion_hyperparams, cond=None, ddim_timesteps=50, eta=0.0):
+    """
+    Perform DDIM sampling for faster generation.
+    DDIM (Denoising Diffusion Implicit Models) allows for deterministic sampling with fewer steps.
+
+    Parameters:
+    net (torch network):            the wavenet model
+    size (tuple):                   size of tensor to be generated,
+                                    usually is (number of audios to generate, channels=1, length of audio)
+    diffusion_hyperparams (dict):   dictionary of diffusion hyperparameters returned by calc_diffusion_hyperparams
+                                    note, the tensors need to be cuda tensors
+    cond:                           conditioning as integer tensor
+    ddim_timesteps (int):           number of timesteps to use for DDIM (default: 50)
+                                    Lower values = faster but potentially lower quality
+                                    Recommended: 20-100 (vs 200 for DDPM)
+    eta (float):                    controls stochasticity. eta=0 is fully deterministic (DDIM),
+                                    eta=1 recovers DDPM sampling
+
+    Returns:
+    the generated audio(s) in torch.tensor, shape=size
+    """
+
+    _dh = diffusion_hyperparams
+    T, Alpha, Alpha_bar, Sigma = _dh["T"], _dh["Alpha"], _dh["Alpha_bar"], _dh["Sigma"]
+    assert len(Alpha) == T
+    assert len(Alpha_bar) == T
+    assert len(Sigma) == T
+    assert len(size) == 3
+
+    # Create a subsequence of timesteps for DDIM
+    # e.g., if T=200 and ddim_timesteps=50, use every 4th timestep: [199, 195, 191, ..., 3]
+    c = T // ddim_timesteps
+    ddim_timestep_seq = list(range(0, T, c))
+    ddim_timestep_seq_next = [-1] + ddim_timestep_seq[:-1]
+
+    print(f'begin DDIM sampling, using {len(ddim_timestep_seq)} steps (vs {T} for DDPM)')
+
+    x = std_normal(size)
+    with torch.no_grad():
+        for i, (t, t_next) in enumerate(zip(reversed(ddim_timestep_seq), reversed(ddim_timestep_seq_next))):
+            diffusion_steps = (t * torch.ones((size[0], 1))).cuda()
+
+            # Predict noise
+            epsilon_theta = net((x, cond, diffusion_steps,))
+
+            # Get alpha values
+            alpha_bar_t = Alpha_bar[t]
+            alpha_bar_t_next = Alpha_bar[t_next] if t_next >= 0 else torch.tensor(1.0).cuda()
+
+            # Predict x_0
+            pred_x0 = (x - torch.sqrt(1 - alpha_bar_t) * epsilon_theta) / torch.sqrt(alpha_bar_t)
+
+            # Direction pointing to x_t
+            dir_xt = torch.sqrt(1 - alpha_bar_t_next - eta**2 * (1 - alpha_bar_t_next) / (1 - alpha_bar_t) * (1 - alpha_bar_t / alpha_bar_t_next)) * epsilon_theta
+
+            # DDIM update
+            if t_next >= 0:
+                x = torch.sqrt(alpha_bar_t_next) * pred_x0 + dir_xt
+
+                # Add stochasticity if eta > 0
+                if eta > 0:
+                    sigma_t = eta * torch.sqrt((1 - alpha_bar_t_next) / (1 - alpha_bar_t) * (1 - alpha_bar_t / alpha_bar_t_next))
+                    x = x + sigma_t * std_normal(size)
+            else:
+                # Last step
+                x = pred_x0
+
+    return x
+
+
 def training_loss_label(net, loss_fn, X, diffusion_hyperparams):
     
     """

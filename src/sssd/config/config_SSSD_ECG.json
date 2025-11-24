@@ -37,6 +37,11 @@
     },
     "gen_config":{
         "output_directory": "sssd_label_cond",
-        "ckpt_path": "sssd_label_cond/",
+        "ckpt_path": "sssd_label_cond/"
+    },
+    "ddim_config":{
+        "use_ddim": true,
+        "ddim_timesteps": 50,
+        "ddim_eta": 0.0
     }
 }

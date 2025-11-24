@@ -16,7 +16,7 @@ import json
 import torch
 import torch.nn as nn
 from models.SSSD_ECG import SSSD_ECG as SSSD_ECG_Base
-from utils.util import calc_diffusion_hyperparams, training_loss_label, sampling_label
+from utils.util import calc_diffusion_hyperparams, training_loss_label, sampling_label, sampling_label_ddim
 
 
 class SSSDECG(nn.Module):
@@ -118,7 +118,8 @@ class SSSDECG(nn.Module):
 
         return loss
 
-    def generate(self, labels=None, num_samples=1, return_numpy=False):
+    def generate(self, labels=None, num_samples=1, return_numpy=False,
+                 use_ddim=True, ddim_timesteps=50, ddim_eta=0.0):
         """
         Generate ECG samples using the diffusion model.
 
@@ -130,6 +131,13 @@ class SSSDECG(nn.Module):
             num_samples (int): Number of samples to generate. Default: 1
                               Only used if labels is None
             return_numpy (bool): If True, return numpy array instead of torch tensor
+            use_ddim (bool): If True, use DDIM sampling (faster). If False, use DDPM. Default: True
+            ddim_timesteps (int): Number of timesteps for DDIM sampling. Default: 50
+                                 Lower = faster but potentially lower quality
+                                 Recommended range: 20-100 (vs 200 for DDPM)
+            ddim_eta (float): Stochasticity parameter for DDIM. Default: 0.0 (deterministic)
+                            eta=0.0: fully deterministic DDIM
+                            eta=1.0: recovers DDPM sampling
 
         Returns:
             torch.Tensor or np.ndarray: Generated ECG signals
@@ -166,12 +174,22 @@ class SSSDECG(nn.Module):
 
         # Generate samples
         with torch.no_grad():
-            samples = sampling_label(
-                self.model,
-                size,
-                self.diffusion_hyperparams,
-                cond=labels
-            )
+            if use_ddim:
+                samples = sampling_label_ddim(
+                    self.model,
+                    size,
+                    self.diffusion_hyperparams,
+                    cond=labels,
+                    ddim_timesteps=ddim_timesteps,
+                    eta=ddim_eta
+                )
+            else:
+                samples = sampling_label(
+                    self.model,
+                    size,
+                    self.diffusion_hyperparams,
+                    cond=labels
+                )
 
         # Restore training mode
         if was_training:

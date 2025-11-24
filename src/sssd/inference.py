@@ -4,7 +4,7 @@ import json
 import numpy as np
 import torch
 
-from utils.util import find_max_epoch, print_size, sampling_label, calc_diffusion_hyperparams
+from utils.util import find_max_epoch, print_size, sampling_label, sampling_label_ddim, calc_diffusion_hyperparams
 from models.SSSD_ECG import SSSD_ECG
 
 
@@ -28,19 +28,25 @@ def generate(output_directory,
              num_samples,
              ckpt_path,
              data_path,
-             ckpt_iter):
-    
-    
+             ckpt_iter,
+             use_ddim=True,
+             ddim_timesteps=50,
+             ddim_eta=0.0):
+
+
     """
-    Generate data based on ground truth 
+    Generate data based on ground truth
 
     Parameters:
     output_directory (str):           save generated speeches to this path
     num_samples (int):                number of samples to generate, default is 4
     ckpt_path (str):                  checkpoint path
-    ckpt_iter (int or 'max'):         the pretrained checkpoint to be loaded; 
+    ckpt_iter (int or 'max'):         the pretrained checkpoint to be loaded;
                                       automitically selects the maximum iteration if 'max' is selected
     data_path (str):                  path to dataset, numpy array.
+    use_ddim (bool):                  whether to use DDIM sampling (faster), default is True
+    ddim_timesteps (int):             number of timesteps for DDIM, default is 50
+    ddim_eta (float):                 stochasticity parameter for DDIM, default is 0.0 (deterministic)
     """
 
     # generate experiment (local) path
@@ -94,17 +100,29 @@ def generate(output_directory,
         end = torch.cuda.Event(enable_timing=True)
         start.record()
 
-        generated_audio = sampling_label(net, (num_samples,8,1000), 
-                               diffusion_hyperparams,
-                               cond=cond)
+        if use_ddim:
+            generated_audio = sampling_label_ddim(
+                net, (num_samples, 8, 1000),
+                diffusion_hyperparams,
+                cond=cond,
+                ddim_timesteps=ddim_timesteps,
+                eta=ddim_eta
+            )
+        else:
+            generated_audio = sampling_label(
+                net, (num_samples, 8, 1000),
+                diffusion_hyperparams,
+                cond=cond
+            )
 
         generated_audio12 = generate_four_leads(generated_audio)
 
         end.record()
         torch.cuda.synchronize()
-        print('generated {} utterances of random_digit at iteration {} in {} seconds'.format(num_samples,
-                                                                               ckpt_iter, 
-                                                                               int(start.elapsed_time(end)/1000)))
+
+        method = f"DDIM ({ddim_timesteps} steps)" if use_ddim else "DDPM (200 steps)"
+        print('generated {} utterances using {} at iteration {} in {} seconds'.format(
+            num_samples, method, ckpt_iter, int(start.elapsed_time(end)/1000)))
 
        
         outfile = f'{i}_samples.npy'
@@ -127,6 +145,14 @@ if __name__ == "__main__":
                         help='Which checkpoint to use; assign a number or "max"')
     parser.add_argument('-n', '--num_samples', type=int, default=400,
                         help='Number of utterances to be generated')
+    parser.add_argument('--use_ddim', action='store_true', default=True,
+                        help='Use DDIM sampling (faster)')
+    parser.add_argument('--use_ddpm', action='store_true',
+                        help='Use DDPM sampling (original, slower)')
+    parser.add_argument('--ddim_timesteps', type=int, default=50,
+                        help='Number of timesteps for DDIM (default: 50, range: 20-100)')
+    parser.add_argument('--ddim_eta', type=float, default=0.0,
+                        help='Stochasticity parameter for DDIM (default: 0.0, range: 0.0-1.0)')
     args = parser.parse_args()
 
     # Parse configs. Globals nicer in this case
@@ -152,11 +178,13 @@ if __name__ == "__main__":
     global model_config
     model_config = config['wavenet_config']
 
+    # Determine which sampling method to use
+    use_ddim = not args.use_ddpm  # If --use_ddpm is specified, don't use DDIM
+
     generate(**gen_config,
              ckpt_iter=args.ckpt_iter,
              num_samples=args.num_samples,
-             use_model=train_config["use_model"],
-             data_path=trainset_config["data_path"],
-             masking=train_config["masking"],
-             missing_k=train_config["missing_k"])
+             use_ddim=use_ddim,
+             ddim_timesteps=args.ddim_timesteps,
+             ddim_eta=args.ddim_eta)
 
