@@ -31,3 +31,23 @@ keywords = {Cardiology, Electrocardiography, Signal processing, Synthetic data, 
 }
 
 ```
+
+## 8-Lead to 12-Lead ECG Conversion
+
+We provide a standalone tool for converting 8-lead ECG data (I, II, V1-V6) to 12-lead ECG data by deriving the missing leads (III, aVR, aVL, aVF).
+
+**Quick Start:**
+
+```bash
+# Command line usage
+python src/sssd/convert_8_to_12_lead.py --input data_8lead.npy --output data_12lead.npy
+
+# Python library usage
+from src.sssd.convert_8_to_12_lead import convert_8_to_12_lead
+data_12lead = convert_8_to_12_lead(data_8lead)
+```
+
+**Documentation:**
+- [Complete Guide](docs/8_to_12_lead_conversion.md) - Detailed usage instructions and examples
+- [Example Script](src/sssd/example_8_to_12_lead_conversion.py) - Working examples
+- [Tests](src/sssd/test_convert_8_to_12_lead.py) - Unit tests
