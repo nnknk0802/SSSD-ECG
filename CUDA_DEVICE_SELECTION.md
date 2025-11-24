@@ -162,3 +162,103 @@ model = SSSDECG(config_path="config/config_SSSD_ECG.json")
 # New code with explicit device selection
 model = SSSDECG(config_path="config/config_SSSD_ECG.json", device="cuda:1")
 ```
+
+## Checking Available Devices
+
+Before initializing the model, you can check which devices are available:
+
+```python
+from model_wrapper import SSSDECG
+
+# Print available devices
+SSSDECG.print_available_devices()
+# Output:
+# Available devices:
+#   CUDA devices: 2
+#     - cuda:0: NVIDIA GeForce RTX 3090
+#     - cuda:1: NVIDIA GeForce RTX 3080
+#   - cpu: CPU
+
+# Get list of available devices
+devices = SSSDECG.list_available_devices()
+print(devices)  # ['cuda:0', 'cuda:1', 'cpu']
+```
+
+## Troubleshooting
+
+### Error: "CUDA error: invalid device ordinal"
+
+This error occurs when you try to use a CUDA device that doesn't exist. For example:
+
+```python
+# If you only have 1 GPU (cuda:0), this will fail:
+model = SSSDECG(config_path="config.json", device="cuda:1")
+```
+
+**Solution:**
+
+1. Check available devices first:
+   ```python
+   from model_wrapper import SSSDECG
+   SSSDECG.print_available_devices()
+   ```
+
+2. The improved error message will now tell you which devices are available:
+   ```
+   RuntimeError: CUDA device 'cuda:1' requested but only 1 device(s) available.
+   Available devices: cuda:0, cpu
+   ```
+
+3. Use an available device:
+   ```python
+   model = SSSDECG(config_path="config.json", device="cuda:0")
+   ```
+
+### Error: "CUDA is not available"
+
+This error occurs when PyTorch cannot detect any CUDA devices.
+
+**Possible causes and solutions:**
+
+1. **No GPU on the system:**
+   - Use CPU instead: `device="cpu"`
+
+2. **CUDA drivers not installed:**
+   - Install appropriate NVIDIA drivers for your GPU
+   - Install CUDA toolkit
+
+3. **PyTorch installed without CUDA support:**
+   - Check: `python -c "import torch; print(torch.cuda.is_available())"`
+   - If False, reinstall PyTorch with CUDA support:
+     ```bash
+     pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+     ```
+
+### Working with CUDA_VISIBLE_DEVICES
+
+If you're using `CUDA_VISIBLE_DEVICES` to restrict visible GPUs, remember that PyTorch will renumber them:
+
+```bash
+# System has cuda:0, cuda:1, cuda:2, cuda:3
+# Only expose cuda:1 and cuda:3
+export CUDA_VISIBLE_DEVICES=1,3
+
+# In Python, these will be cuda:0 and cuda:1
+python your_script.py
+```
+
+```python
+# In your script with CUDA_VISIBLE_DEVICES=1,3:
+model = SSSDECG(config_path="config.json", device="cuda:0")  # This is physical cuda:1
+model = SSSDECG(config_path="config.json", device="cuda:1")  # This is physical cuda:3
+```
+
+### Checking Device Assignment
+
+To verify your model is on the correct device:
+
+```python
+model = SSSDECG(config_path="config.json", device="cuda:1")
+print(f"Model device: {model.device}")
+print(f"Model weights device: {next(model.parameters()).device}")
+```

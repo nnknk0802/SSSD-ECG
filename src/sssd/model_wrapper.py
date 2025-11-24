@@ -37,11 +37,32 @@ class SSSDECG(nn.Module):
     def __init__(self, config_path=None, device=None):
         super(SSSDECG, self).__init__()
 
-        # Set device
+        # Set device with validation
         if device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         else:
-            self.device = torch.device(device)
+            # Validate the requested device
+            requested_device = torch.device(device)
+
+            # Check if CUDA device is requested but not available
+            if requested_device.type == 'cuda':
+                if not torch.cuda.is_available():
+                    raise RuntimeError(
+                        f"CUDA device '{device}' requested but CUDA is not available. "
+                        f"Please check your PyTorch installation and GPU drivers."
+                    )
+
+                # Check if specific device index is valid
+                if requested_device.index is not None:
+                    num_devices = torch.cuda.device_count()
+                    if requested_device.index >= num_devices:
+                        available_devices = ', '.join([f'cuda:{i}' for i in range(num_devices)])
+                        raise RuntimeError(
+                            f"CUDA device '{device}' requested but only {num_devices} device(s) available. "
+                            f"Available devices: {available_devices}, cpu"
+                        )
+
+            self.device = requested_device
 
         # Load configuration
         if config_path is None:
@@ -235,6 +256,34 @@ class SSSDECG(nn.Module):
         """Print model size information."""
         num_params = self.get_model_size()
         print(f"Model Parameters: {num_params / 1e6:.2f}M")
+
+    @staticmethod
+    def list_available_devices():
+        """
+        List all available devices (CUDA and CPU).
+
+        Returns:
+            list: List of available device strings (e.g., ['cuda:0', 'cuda:1', 'cpu'])
+        """
+        devices = []
+        if torch.cuda.is_available():
+            for i in range(torch.cuda.device_count()):
+                devices.append(f'cuda:{i}')
+        devices.append('cpu')
+        return devices
+
+    @staticmethod
+    def print_available_devices():
+        """Print information about available devices."""
+        print("Available devices:")
+        if torch.cuda.is_available():
+            num_devices = torch.cuda.device_count()
+            print(f"  CUDA devices: {num_devices}")
+            for i in range(num_devices):
+                print(f"    - cuda:{i}: {torch.cuda.get_device_name(i)}")
+        else:
+            print("  CUDA: Not available")
+        print("  - cpu: CPU")
 
     def _check_jit_availability(self):
         """Check if PyTorch JIT compilation is available."""
