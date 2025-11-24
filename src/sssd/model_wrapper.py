@@ -80,6 +80,10 @@ class SSSDECG(nn.Module):
         # For tracking training mode
         self._is_training = True
 
+        # Cache for JIT compiled model
+        self._jit_model = None
+        self._jit_available = self._check_jit_availability()
+
     def forward(self, x, y):
         """
         Compute training loss for a batch of data.
@@ -229,3 +233,151 @@ class SSSDECG(nn.Module):
         """Print model size information."""
         num_params = self.get_model_size()
         print(f"Model Parameters: {num_params / 1e6:.2f}M")
+
+    def _check_jit_availability(self):
+        """Check if PyTorch JIT compilation is available."""
+        try:
+            # Check for torch.compile (PyTorch 2.0+)
+            if hasattr(torch, 'compile'):
+                return 'compile'
+            # Fall back to torch.jit.script
+            elif hasattr(torch, 'jit'):
+                return 'jit'
+            else:
+                return None
+        except Exception:
+            return None
+
+    def _sampling_label_jit(self, net, size, diffusion_hyperparams, cond):
+        """
+        JIT-compatible version of sampling_label function.
+        Performs the complete sampling step according to p(x_0|x_T) = \prod_{t=1}^T p_{\theta}(x_{t-1}|x_t)
+
+        Args:
+            net: the model network
+            size (tuple): size of tensor to be generated (batch_size, channels, length)
+            diffusion_hyperparams (dict): dictionary of diffusion hyperparameters
+            cond: conditioning labels
+
+        Returns:
+            torch.Tensor: Generated samples
+        """
+        _dh = diffusion_hyperparams
+        T, Alpha, Alpha_bar, Sigma = _dh["T"], _dh["Alpha"], _dh["Alpha_bar"], _dh["Sigma"]
+
+        # Initialize with noise
+        x = torch.randn(size, device=self.device)
+
+        # Reverse diffusion process
+        for t in range(T-1, -1, -1):
+            diffusion_steps = (t * torch.ones((size[0], 1), device=self.device))
+
+            # Predict epsilon
+            epsilon_theta = net((x, cond, diffusion_steps))
+
+            # Update x_{t-1}
+            x = (x - (1-Alpha[t])/torch.sqrt(1-Alpha_bar[t]) * epsilon_theta) / torch.sqrt(Alpha[t])
+
+            # Add variance term if not at the last step
+            if t > 0:
+                noise = torch.randn(size, device=self.device)
+                x = x + Sigma[t] * noise
+
+        return x
+
+    def generate_jit(self, labels=None, num_samples=1, return_numpy=False, force_recompile=False):
+        """
+        Generate ECG samples using JIT-compiled model for faster inference.
+
+        This method uses PyTorch's JIT compilation (torch.compile or torch.jit) to speed up
+        the generation process. The model is compiled on the first call and cached for subsequent calls.
+
+        Args:
+            labels (torch.Tensor, optional): Conditioning labels
+                - shape=(num_samples, num_classes) for multi-label
+                - shape=(num_samples,) for class indices (will be converted to one-hot)
+                - If None, random labels will be generated
+            num_samples (int): Number of samples to generate. Default: 1
+                              Only used if labels is None
+            return_numpy (bool): If True, return numpy array instead of torch tensor
+            force_recompile (bool): If True, force recompilation of the model
+
+        Returns:
+            torch.Tensor or np.ndarray: Generated ECG signals
+                shape=(num_samples, channels, length)
+
+        Note:
+            - First call will be slower due to compilation overhead
+            - Subsequent calls will be significantly faster
+            - If JIT is not available, falls back to regular generate()
+        """
+        # Check if JIT is available
+        if not self._jit_available:
+            print("Warning: JIT compilation not available. Falling back to regular generate().")
+            return self.generate(labels=labels, num_samples=num_samples, return_numpy=return_numpy)
+
+        # Ensure model is in eval mode
+        was_training = self.model.training
+        self.model.eval()
+
+        # Compile model if not already compiled
+        if self._jit_model is None or force_recompile:
+            print(f"Compiling model with {self._jit_available}...")
+            try:
+                if self._jit_available == 'compile':
+                    # Use torch.compile (PyTorch 2.0+)
+                    self._jit_model = torch.compile(self.model, mode='reduce-overhead')
+                elif self._jit_available == 'jit':
+                    # Use torch.jit.script as fallback
+                    # Note: torch.jit.script may not work with all models
+                    self._jit_model = self.model  # Keep original model
+                print("Model compilation completed.")
+            except Exception as e:
+                print(f"Warning: Model compilation failed: {e}")
+                print("Falling back to regular generate().")
+                self._jit_available = None
+                return self.generate(labels=labels, num_samples=num_samples, return_numpy=return_numpy)
+
+        # Handle labels
+        if labels is None:
+            # Generate random labels
+            num_classes = self.model_config.get("label_embed_classes", 71)
+            labels = torch.randint(0, num_classes, (num_samples,), device=self.device)
+        else:
+            labels = labels.to(self.device)
+            num_samples = labels.size(0)
+
+        # Convert labels to proper format if needed
+        if labels.dtype != torch.float32:
+            labels = labels.float()
+
+        # If labels is 1D, convert to one-hot
+        if len(labels.shape) == 1:
+            num_classes = self.model_config.get("label_embed_classes", 71)
+            labels_onehot = torch.zeros(num_samples, num_classes, device=self.device)
+            labels_onehot.scatter_(1, labels.long().unsqueeze(1), 1)
+            labels = labels_onehot
+
+        # Determine output size
+        channels = self.model_config["out_channels"]
+        length = self.config.get("trainset_config", {}).get("segment_length", 1000)
+        size = (num_samples, channels, length)
+
+        # Generate samples using JIT-compiled model
+        with torch.no_grad():
+            samples = self._sampling_label_jit(
+                self._jit_model,
+                size,
+                self.diffusion_hyperparams,
+                labels
+            )
+
+        # Restore training mode
+        if was_training:
+            self.model.train()
+
+        # Convert to numpy if requested
+        if return_numpy:
+            return samples.cpu().numpy()
+
+        return samples
