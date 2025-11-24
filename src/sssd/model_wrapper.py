@@ -117,7 +117,8 @@ class SSSDECG(nn.Module):
             self.model,
             self.loss_fn,
             X,
-            self.diffusion_hyperparams
+            self.diffusion_hyperparams,
+            device=self.device
         )
 
         return loss
@@ -174,7 +175,8 @@ class SSSDECG(nn.Module):
                 self.model,
                 size,
                 self.diffusion_hyperparams,
-                cond=labels
+                cond=labels,
+                device=self.device
             )
 
         # Restore training mode
