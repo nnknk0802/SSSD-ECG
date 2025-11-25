@@ -51,15 +51,15 @@ def print_size(net):
 
 # Utilities for diffusion models
 
-def std_normal(size):
+def std_normal(size, device):
     """
     Generate the standard Gaussian variable of a certain size
     """
 
-    return torch.normal(0, 1, size=size).cuda()
+    return torch.normal(0, 1, size=size).to(device)
 
 
-def calc_diffusion_step_embedding(diffusion_steps, diffusion_step_embed_dim_in):
+def calc_diffusion_step_embedding(diffusion_steps, diffusion_step_embed_dim_in, device):
     """
     Embed a diffusion step $t$ into a higher dimensional space
     E.g. the embedding vector in the 128-dimensional space is
@@ -79,7 +79,7 @@ def calc_diffusion_step_embedding(diffusion_steps, diffusion_step_embed_dim_in):
 
     half_dim = diffusion_step_embed_dim_in // 2
     _embed = np.log(10000) / (half_dim - 1)
-    _embed = torch.exp(torch.arange(half_dim) * -_embed).cuda()
+    _embed = torch.exp(torch.arange(half_dim) * -_embed).to(device)
     _embed = diffusion_steps * _embed
     diffusion_step_embed = torch.cat((torch.sin(_embed),
                                       torch.cos(_embed)), 1)
@@ -119,7 +119,7 @@ def calc_diffusion_hyperparams(T, beta_0, beta_T):
     return diffusion_hyperparams
 
   
-def sampling_label(net, size, diffusion_hyperparams, cond=None):
+def sampling_label(net, size, diffusion_hyperparams, cond=None, device="cpu"):
     """
     Perform the complete sampling step according to p(x_0|x_T) = \prod_{t=1}^T p_{\theta}(x_{t-1}|x_t)
 
@@ -145,19 +145,19 @@ def sampling_label(net, size, diffusion_hyperparams, cond=None):
     
     print('begin sampling, total number of reverse steps = %s' % T)
 
-    x = std_normal(size)
+    x = std_normal(size, device)
     with torch.no_grad():
         for t in range(T-1, -1, -1):
-            diffusion_steps = (t * torch.ones((size[0], 1))).cuda()  # use the corresponding reverse step
+            diffusion_steps = (t * torch.ones((size[0], 1))).to(device)  # use the corresponding reverse step
             epsilon_theta = net((x, cond, diffusion_steps,))  # predict \epsilon according to \epsilon_\theta
                 
             x = (x - (1-Alpha[t])/torch.sqrt(1-Alpha_bar[t]) * epsilon_theta) / torch.sqrt(Alpha[t])  # update x_{t-1} to \mu_\theta(x_t)
             if t > 0:
-                x = x + Sigma[t] * std_normal(size)  # add the variance term to x_{t-1}
+                x = x + Sigma[t] * std_normal(size, device)  # add the variance term to x_{t-1}
     return x
 
 
-def training_loss_label(net, loss_fn, X, diffusion_hyperparams):
+def training_loss_label(net, loss_fn, X, diffusion_hyperparams, device):
     
     """
     Compute the training loss of epsilon and epsilon_theta
@@ -179,8 +179,8 @@ def training_loss_label(net, loss_fn, X, diffusion_hyperparams):
     audio = X[0]
     label = X[1]
     B, C, L = audio.shape  # B is batchsize, C=1, L is audio length
-    diffusion_steps = torch.randint(T, size=(B,1,1)).cuda()  # randomly sample diffusion steps from 1~T
-    z = std_normal(audio.shape)
+    diffusion_steps = torch.randint(T, size=(B,1,1)).to(device)  # randomly sample diffusion steps from 1~T
+    z = std_normal(audio.shape, device)
     transformed_X = torch.sqrt(Alpha_bar[diffusion_steps]) * audio + torch.sqrt(1-Alpha_bar[diffusion_steps]) * z
     epsilon_theta = net((transformed_X, label, diffusion_steps.view(B,1),))  
     

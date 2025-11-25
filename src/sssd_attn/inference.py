@@ -5,7 +5,8 @@ import numpy as np
 import torch
 
 from utils.util import find_max_epoch, print_size, sampling_label, calc_diffusion_hyperparams
-from models.SSSD_ECG import SSSD_ECG
+# from models.SSSD_ECG import SSSD_ECG
+from models.SSSD_ECG_Attn import SSSD_ECG_Attn as SSSD_ECG
 
 
 def generate_four_leads(tensor):
@@ -28,7 +29,9 @@ def generate(output_directory,
              num_samples,
              ckpt_path,
              data_path,
-             ckpt_iter):
+             ckpt_iter,
+             lb_path,
+             device="cuda:0"):
     
     
     """
@@ -77,7 +80,8 @@ def generate(output_directory,
         raise Exception('No valid model found')
 
    
-    labels = np.load('ptbxl_test_labels.npy')
+    # labels = np.load('ptbxl_test_labels.npy')
+    labels = np.load(lb_path)
     l1 = labels[0:400]
     l2 = labels[400:800]
     l3 = labels[800:1200]
@@ -96,7 +100,7 @@ def generate(output_directory,
 
         generated_audio = sampling_label(net, (num_samples,8,1000), 
                                diffusion_hyperparams,
-                               cond=cond)
+                               cond=cond, device=device)
 
         generated_audio12 = generate_four_leads(generated_audio)
 
@@ -120,8 +124,9 @@ def generate(output_directory,
         
 
 if __name__ == "__main__":
+    import time
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', type=str, default='config/config_SSSD_ECG.json',
+    parser.add_argument('-c', '--config', type=str, default='config/config_SSSD_ECG_attn.json',
                         help='JSON file for configuration')
     parser.add_argument('-ckpt_iter', '--ckpt_iter', default=100000,
                         help='Which checkpoint to use; assign a number or "max"')
@@ -152,11 +157,19 @@ if __name__ == "__main__":
     global model_config
     model_config = config['wavenet_config']
 
+    lb_path = "/export/work/users/nonaka/project/SynECG/dataset/v231017/PTBXL-sssd_data/val_seed0006_labels.npy"
+    start = time.time()
     generate(**gen_config,
              ckpt_iter=args.ckpt_iter,
              num_samples=args.num_samples,
-             use_model=train_config["use_model"],
-             data_path=trainset_config["data_path"],
-             masking=train_config["masking"],
-             missing_k=train_config["missing_k"])
+            #  ckpt_path=gen_config["ckpt_path"],
+             data_path=None,
+             lb_path=lb_path
+            #  use_model=train_config["use_model"],
+            #  data_path=trainset_config["data_path"],
+            #  masking=train_config["masking"],
+    )
+    end = time.time()
+    print(f"Total time: {end-start:.4f} seconds")
+
 
